@@ -18,7 +18,7 @@
 // #if defined(ARDUINO) && ARDUINO >= 100
 /* Include definition of serial commands */
 #include <rotary.h>
-
+#include "motor.h"
 /* Motor driver function definitions */
 
 /* PID parameters and functions */
@@ -65,9 +65,10 @@ char argv2[16];
 long arg1;
 long arg2;
 
-Rotary leftEnc = Rotary(LEFT_ENC_PIN_A, LEFT_ENC_PIN_B);
-Rotary rightEnc = Rotary(RIGHT_ENC_PIN_A, RIGHT_ENC_PIN_B);
-
+// Rotary leftEnc = Rotary(LEFT_ENC_PIN_A, LEFT_ENC_PIN_B);
+// Rotary rightEnc = Rotary(RIGHT_ENC_PIN_A, RIGHT_ENC_PIN_B);
+Motor leftMotor = Motor(LEFT_ENC_PIN_A, LEFT_ENC_PIN_B);
+Motor rightMotor = Motor(RIGHT_ENC_PIN_A, RIGHT_ENC_PIN_B);
 /* Clear the current command parameters */
 void resetCommand() {
   cmd = NULL;
@@ -115,13 +116,13 @@ int runCommand() {
     
 #ifdef USE_BASE
   case READ_ENCODERS:
-    Serial.print(leftEnc.position);
+    Serial.print(leftMotor.getPosition());
     Serial.print(" ");
-    Serial.println(rightEnc.position);
+    Serial.println(rightMotor.getPosition());
     break;
    case RESET_ENCODERS:
-    resetEncoders(leftEnc.position, rightEnc.position);
-    resetPID(leftEnc.position, rightEnc.position);
+    resetEncoders(leftMotor.getPosition(), rightMotor.getPosition());
+    resetPID(leftMotor.getPosition(), rightMotor.getPosition());
     Serial.println("OK");
     break;
   case MOTOR_SPEEDS:
@@ -129,7 +130,7 @@ int runCommand() {
     lastMotorCommand = millis();
     if (arg1 == 0 && arg2 == 0) {
       setMotorSpeeds(0, 0);
-      resetPID(leftEnc.position, rightEnc.position);
+      resetPID(leftMotor.getPosition(), rightMotor.getPosition());
       moving = 0;
     }
     else moving = 1;
@@ -140,7 +141,7 @@ int runCommand() {
   case MOTOR_RAW_PWM:
     /* Reset the auto stop timer */
     lastMotorCommand = millis();
-    resetPID(leftEnc.position, rightEnc.position);
+    resetPID(leftMotor.getPosition(), rightMotor.getPosition());
     moving = 0; // Sneaky way to temporarily disable the PID
     setMotorSpeeds(arg1, arg2);
     Serial.println("OK"); 
@@ -168,8 +169,11 @@ void setup() {
 
   Serial.begin(BAUDRATE);
   
-  leftEnc.begin();
-  rightEnc.begin();
+  // leftEnc.begin();
+  // rightEnc.begin();
+
+  leftMotor.begin();
+  rightMotor.begin();
 
   PCMSK0 |= (1 << PCINT3)|(1 << PCINT4);
   PCMSK2 |= (1 << LEFT_ENC_PIN_A)|(1 << LEFT_ENC_PIN_B);
@@ -178,7 +182,7 @@ void setup() {
   sei();
   
   initMotorController();
-  resetPID(leftEnc.position, rightEnc.position);
+  resetPID(leftMotor.getPosition(), rightMotor.getPosition());
 }
 
 void loop() 
@@ -224,7 +228,8 @@ void loop()
   }
   
   if (millis() > nextPID) {
-    updatePID(leftEnc.position, rightEnc.position);
+    Speeds spd = updatePID(leftMotor.getPosition(), rightMotor.getPosition());
+    setMotorSpeeds(spd.spd1, spd.spd2);
     nextPID += PID_INTERVAL;
   }
   
@@ -237,27 +242,9 @@ void loop()
 }
 
 ISR(PCINT2_vect) {
-  unsigned char result = leftEnc.process();
-  if (result == DIR_NONE) {
-    // do nothing
-  }
-  else if (result == DIR_CW) {
-    leftEnc.position++;
-  }
-  else if (result == DIR_CCW) {
-    leftEnc.position--;
-  }
+  leftMotor.InterruptUpdatePosition();
 }
 ISR(PCINT0_vect) {
-  unsigned char result = rightEnc.process();
-  if (result == DIR_NONE) {
-    // do nothing
-  }
-  else if (result == DIR_CW) {
-    rightEnc.position++;
-  }
-  else if (result == DIR_CCW) {
-    rightEnc.position--;
-  }
+  rightMotor.InterruptUpdatePosition();
 }
 

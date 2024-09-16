@@ -9,6 +9,11 @@
 
 #include "motor_driver.h"
 
+struct Speeds
+{
+  int spd1, spd2;
+};
+
 /* PID setpoint info For a Motor */
 typedef struct {
   double TargetTicksPerFrame;    // target speed in ticks per frame
@@ -107,7 +112,7 @@ void doPID(SetPointInfo * p) {
 }
 
 /* Read the encoder values and call the PID routine */
-void updatePID(long& encoderPositionL, long& encoderPositionR) {
+Speeds updatePID(long& encoderPositionL, long& encoderPositionR) {
   /* Read the encoders */
   leftPID.Encoder = encoderPositionL;
   rightPID.Encoder = encoderPositionR;
@@ -121,7 +126,7 @@ void updatePID(long& encoderPositionL, long& encoderPositionR) {
     * whether reset has already happened
     */
     if (leftPID.PrevInput != 0 || rightPID.PrevInput != 0) resetPID(encoderPositionL, encoderPositionR);
-    return;
+    return {0,0};
   }
 
   /* Compute PID update for each motor */
@@ -129,7 +134,8 @@ void updatePID(long& encoderPositionL, long& encoderPositionR) {
   doPID(&leftPID);
 
   /* Set the motor speeds accordingly */
-  setMotorSpeeds(leftPID.output, rightPID.output);
+  return {leftPID.output, rightPID.output};
+  // setMotorSpeeds(leftPID.output, rightPID.output);
 }
 
 #endif
