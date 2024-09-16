@@ -17,12 +17,13 @@
 
 // #if defined(ARDUINO) && ARDUINO >= 100
 /* Include definition of serial commands */
-#include <rotary.h>
+// #include <rotary.h>
 #include "motor.h"
+#include "commands.h"
 /* Motor driver function definitions */
 
 /* PID parameters and functions */
-#include "diff_controller.h"
+// #include "diff_controller.h"
 
 /* Run the PID loop at 30 times per second */
 #define PID_RATE           30     // Hz
@@ -44,6 +45,14 @@ long lastMotorCommand = AUTO_STOP_INTERVAL;
 // //below can be changed, but should be PORTC pins
 #define RIGHT_ENC_PIN_A 11  //pin A4
 #define RIGHT_ENC_PIN_B 12   //pin A5
+
+#define LEFT_MOTOR_FORWARD   14
+#define LEFT_MOTOR_BACKWARD  15
+#define RIGHT_MOTOR_FORWARD  8
+#define RIGHT_MOTOR_BACKWARD 7
+
+#define LEFT_MOTOR_PWM 9
+#define RIGHT_MOTOR_PWM 10
 
 /* Variable initialization */
 
@@ -67,8 +76,8 @@ long arg2;
 
 // Rotary leftEnc = Rotary(LEFT_ENC_PIN_A, LEFT_ENC_PIN_B);
 // Rotary rightEnc = Rotary(RIGHT_ENC_PIN_A, RIGHT_ENC_PIN_B);
-Motor leftMotor = Motor(LEFT_ENC_PIN_A, LEFT_ENC_PIN_B);
-Motor rightMotor = Motor(RIGHT_ENC_PIN_A, RIGHT_ENC_PIN_B);
+Motor leftMotor = Motor(LEFT_ENC_PIN_A, LEFT_ENC_PIN_B, LEFT_MOTOR_FORWARD, LEFT_MOTOR_BACKWARD, LEFT_MOTOR_PWM);
+Motor rightMotor = Motor(RIGHT_ENC_PIN_A, RIGHT_ENC_PIN_B, RIGHT_MOTOR_FORWARD, RIGHT_MOTOR_BACKWARD, RIGHT_MOTOR_PWM);
 /* Clear the current command parameters */
 void resetCommand() {
   cmd = NULL;
@@ -121,42 +130,61 @@ int runCommand() {
     Serial.println(rightMotor.getPosition());
     break;
    case RESET_ENCODERS:
-    resetEncoders(leftMotor.getPosition(), rightMotor.getPosition());
-    resetPID(leftMotor.getPosition(), rightMotor.getPosition());
+    leftMotor.resetEncoder();
+    leftMotor.resetPID();
+    // resetEncoders(leftMotor.getPosition(), rightMotor.getPosition());
+    // resetPID(leftMotor.getPosition(), rightMotor.getPosition());
     Serial.println("OK");
     break;
   case MOTOR_SPEEDS:
     /* Reset the auto stop timer */
     lastMotorCommand = millis();
     if (arg1 == 0 && arg2 == 0) {
-      setMotorSpeeds(0, 0);
-      resetPID(leftMotor.getPosition(), rightMotor.getPosition());
-      moving = 0;
+      leftMotor.setMotorSpeed(0);
+      rightMotor.setMotorSpeed(0);
+      // setMotorSpeeds(0, 0);
+      leftMotor.resetPID();
+      rightMotor.resetPID();
+      // resetPID(leftMotor.getPosition(), rightMotor.getPosition());
+      leftMotor.moving = 0;
+      rightMotor.moving = 0;
+      // moving = 0;
     }
-    else moving = 1;
-    leftPID.TargetTicksPerFrame = arg1;
-    rightPID.TargetTicksPerFrame = arg2;
+    else
+    {
+      leftMotor.moving = 1;
+      rightMotor.moving = 1;
+    };
+    leftMotor.dataPID.TargetTicksPerFrame = arg1;
+    rightMotor.dataPID.TargetTicksPerFrame = arg2;
     Serial.println("OK"); 
     break;
   case MOTOR_RAW_PWM:
     /* Reset the auto stop timer */
     lastMotorCommand = millis();
-    resetPID(leftMotor.getPosition(), rightMotor.getPosition());
-    moving = 0; // Sneaky way to temporarily disable the PID
-    setMotorSpeeds(arg1, arg2);
+    // resetPID(leftMotor.getPosition(), rightMotor.getPosition());
+    leftMotor.resetPID();
+    rightMotor.resetPID();
+    
+    leftMotor.moving = 0;
+    rightMotor.moving = 0;
+    // moving = 0; // Sneaky way to temporarily disable the PID
+    // setMotorSpeeds(arg1, arg2);
+    leftMotor.setMotorSpeed(arg1);
+    rightMotor.setMotorSpeed(arg2);
     Serial.println("OK"); 
     break;
-  case UPDATE_PID:
-    while ((str = strtok_r(p, ":", &p)) != '\0') {
-       pid_args[i] = atoi(str);
-       i++;
-    }
-    Kp = pid_args[0];
-    Kd = pid_args[1];
-    Ki = pid_args[2];
-    Ko = pid_args[3];
-    Serial.println("OK");
-    break;
+  // case UPDATE_PID:
+  //   while ((str = strtok_r(p, ":", &p)) != '\0') {
+  //      pid_args[i] = atoi(str);
+  //      i++;
+  //   }
+  //   Kp = pid_args[0];
+  //   Kd = pid_args[1];
+  //   Ki = pid_args[2];
+  //   Ko = pid_args[3];
+  //   Serial.println("OK");
+  //   break;
 #endif
   default:
     Serial.println("Invalid Command");
@@ -181,8 +209,10 @@ void setup() {
 
   sei();
   
-  initMotorController();
-  resetPID(leftMotor.getPosition(), rightMotor.getPosition());
+  // initMotorController();
+  leftMotor.resetPID();
+  rightMotor.resetPID();
+  // resetPID(leftMotor.getPosition(), rightMotor.getPosition());
 }
 
 void loop() 
@@ -228,15 +258,19 @@ void loop()
   }
   
   if (millis() > nextPID) {
-    Speeds spd = updatePID(leftMotor.getPosition(), rightMotor.getPosition());
-    setMotorSpeeds(spd.spd1, spd.spd2);
+    leftMotor.updatePID();
+    rightMotor.updatePID();
     nextPID += PID_INTERVAL;
   }
   
   // Check to see if we have exceeded the auto-stop interval
   if ((millis() - lastMotorCommand) > AUTO_STOP_INTERVAL) {;
-    setMotorSpeeds(0, 0);
-    moving = 0;
+    // setMotorSpeeds(0, 0);
+    // moving = 0;
+    leftMotor.setMotorSpeed(0);
+    rightMotor.setMotorSpeed(0);
+    leftMotor.moving = 0;
+    rightMotor.moving = 0;
   }
 
 }
