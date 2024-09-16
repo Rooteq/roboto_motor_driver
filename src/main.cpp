@@ -155,8 +155,10 @@ int runCommand() {
       leftMotor.moving = 1;
       rightMotor.moving = 1;
     };
-    leftMotor.dataPID.TargetTicksPerFrame = arg1;
-    rightMotor.dataPID.TargetTicksPerFrame = arg2;
+    leftMotor.setTargetTPF(arg1);
+    rightMotor.setTargetTPF(arg2);
+    // leftMotor.dataPID.TargetTicksPerFrame = arg1;
+    // rightMotor.dataPID.TargetTicksPerFrame = arg2;
     Serial.println("OK"); 
     break;
   case MOTOR_RAW_PWM:
