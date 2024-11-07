@@ -1,67 +1,29 @@
-/* Define single-letter commands that will be sent by the PC over the
-   serial link.
-*/
-
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
 #include "motor.h"
+#include "SPI.h"
+#include "mcp2515.h"
 
-#define READ_ENCODERS  'e'
-#define MOTOR_SPEEDS   'm'
-#define MOTOR_RAW_PWM  'o'
-#define RESET_ENCODERS 'r'
-#define UPDATE_PID     'u'
+// CAN message IDs
+#define MOTOR_COMMAND_ID    0x101
+#define ENCODER_REQUEST_ID  0x102
+#define ENCODER_RESPONSE_ID 0x103
 
 #define AUTO_STOP_INTERVAL 2000
 
 long lastMotorCommand = AUTO_STOP_INTERVAL;
+#define CAN_CS_PIN 5
 
-int arg = 0;
-int index = 0;
+MCP2515 mcp2515(CAN_CS_PIN);
 
-char chr;
+void handleMotorCommand(struct can_frame &frame, Motor& leftMotor, Motor& rightMotor) {
+    int16_t motor1 = (frame.data[0] << 8) | frame.data[1];
+    int16_t motor2 = (frame.data[2] << 8) | frame.data[3];
 
-char cmd;
-
-char argv1[16];
-char argv2[16];
-
-long arg1;
-long arg2;
-
-void resetCommand() {
-  cmd = NULL;
-  memset(argv1, 0, sizeof(argv1));
-  memset(argv2, 0, sizeof(argv2));
-  arg1 = 0;
-  arg2 = 0;
-  arg = 0;
-  index = 0;
-}
-
-int runCommand(Motor& leftMotor, Motor& rightMotor) {
-  int i = 0;
-  char *p = argv1;
-  char *str;
-  int pid_args[4];
-  arg1 = atoi(argv1);
-  arg2 = atoi(argv2);
-  
-  switch(cmd) {
-  case READ_ENCODERS:
-    Serial.print(leftMotor.getPosition());
-    Serial.print(" ");
-    Serial.println(rightMotor.getPosition());
-    break;
-   case RESET_ENCODERS:
-    leftMotor.resetEncoder();
-    leftMotor.resetPID();
-    Serial.println("OK");
-    break;
-  case MOTOR_SPEEDS:
     lastMotorCommand = millis();
-    if (arg1 == 0 && arg2 == 0) {
+
+    if (motor1 == 0 && motor2 == 0) {
       leftMotor.setMotorSpeed(0);
       rightMotor.setMotorSpeed(0);
       leftMotor.resetPID();
@@ -74,70 +36,47 @@ int runCommand(Motor& leftMotor, Motor& rightMotor) {
       leftMotor.moving = 1;
       rightMotor.moving = 1;
     };
-    leftMotor.setTargetTPF(arg1);
-    rightMotor.setTargetTPF(arg2);
-    Serial.println("OK"); 
-    break;
-  case MOTOR_RAW_PWM:
-    lastMotorCommand = millis();
-    leftMotor.resetPID();
-    rightMotor.resetPID();
-    leftMotor.moving = 0;
-    rightMotor.moving = 0;
-    leftMotor.setMotorSpeed(arg1);
-    rightMotor.setMotorSpeed(arg2);
-    Serial.println("OK"); 
-    break;
-  // case UPDATE_PID:
-  //   while ((str = strtok_r(p, ":", &p)) != '\0') {
-  //      pid_args[i] = atoi(str);
-  //      i++;
-  //   }
-  //   Kp = pid_args[0];
-  //   Kd = pid_args[1];
-  //   Ki = pid_args[2];
-  //   Ko = pid_args[3];
-  //   Serial.println("OK");
-  //   break;
-  default:
-    Serial.println("Invalid Command");
-    break;
-  }
+    leftMotor.setTargetTPF(motor1);
+    rightMotor.setTargetTPF(motor2);
 }
 
-void handleCommands(Motor& leftMotor, Motor& rightMotor){
-  while (Serial.available() > 0) {
-    
-    chr = Serial.read();
+void handleEncoderRequest(Motor& leftMotor, Motor& rightMotor) {
+    struct can_frame frame;
 
-    if (chr == 13) {
-      if (arg == 1) argv1[index] = NULL;
-      else if (arg == 2) argv2[index] = NULL;
-      runCommand(leftMotor, rightMotor);
-      resetCommand();
+    frame.can_id = ENCODER_RESPONSE_ID;
+    frame.can_dlc = 8;  // Now 8 bytes (4 bytes per encoder)
+    
+    frame.data[0] = (leftMotor.getPosition()>> 24) & 0xFF;  // Highest byte
+    frame.data[1] = ( leftMotor.getPosition()>> 16) & 0xFF;
+    frame.data[2] = ( leftMotor.getPosition()>> 8) & 0xFF;
+    frame.data[3] =  leftMotor.getPosition()& 0xFF;          // Lowest byte
+    
+    frame.data[4] = ( rightMotor.getPosition()>> 24) & 0xFF;  // Highest byte
+    frame.data[5] = ( rightMotor.getPosition()>> 16) & 0xFF;
+    frame.data[6] = ( rightMotor.getPosition()>> 8) & 0xFF;
+    frame.data[7] =  rightMotor.getPosition()& 0xFF;          // Lowest byte
+    
+    if(mcp2515.sendMessage(&frame) != MCP2515::ERROR_OK)
+    {
+      Serial.println("error sending message");
     }
-    else if (chr == ' ') {
-      if (arg == 0) arg = 1;
-      else if (arg == 1)  {
-        argv1[index] = NULL;
-        arg = 2;
-        index = 0;
-      }
-      continue;
+}
+
+void handleCanComms(Motor& leftMotor, Motor& rightMotor)
+{
+    struct can_frame canMsg;
+    
+    if (mcp2515.readMessage(&canMsg) == MCP2515::ERROR_OK) {
+        switch(canMsg.can_id) {
+            case MOTOR_COMMAND_ID:
+                handleMotorCommand(canMsg, leftMotor, rightMotor);
+                break;
+                
+            case ENCODER_REQUEST_ID:
+                handleEncoderRequest(leftMotor, rightMotor);
+                break;
+        }
     }
-    else {
-      if (arg == 0) {
-        cmd = chr;
-      }
-      else if (arg == 1) {
-        argv1[index] = chr;
-        index++;
-      }
-      else if (arg == 2) {
-        argv2[index] = chr;
-        index++;
-      }
-    }
-  }
-}  
+}
+
 #endif

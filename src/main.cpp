@@ -11,8 +11,8 @@ unsigned long nextPID = PID_INTERVAL;
 #define LEFT_ENC_PIN_A 2
 #define LEFT_ENC_PIN_B 3 
 
-#define RIGHT_ENC_PIN_A 11  
-#define RIGHT_ENC_PIN_B 12  
+#define RIGHT_ENC_PIN_A 18 
+#define RIGHT_ENC_PIN_B 19  
 
 #define LEFT_MOTOR_FORWARD   14
 #define LEFT_MOTOR_BACKWARD  15
@@ -40,12 +40,20 @@ void setup() {
   
   leftMotor.resetPID();
   rightMotor.resetPID();
+
+  SPI.begin();
+  
+  mcp2515.reset();
+  mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ);
+  mcp2515.setNormalMode();
+  
+  Serial.println("MCP2515 Initialized");
 }
 
 void loop() 
 {
 
-  handleCommands(leftMotor, rightMotor);
+  handleCanComms(leftMotor, rightMotor);
 
   if (millis() > nextPID) {
     leftMotor.updatePID();
@@ -67,4 +75,3 @@ ISR(PCINT2_vect) {
 ISR(PCINT0_vect) {
   rightMotor.InterruptUpdatePosition();
 }
-
